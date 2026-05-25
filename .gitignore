@@ -1,2 +1,5 @@
 data/*
 notebooks/outputs/*
+*Env*
+__pycache__/
+outputs/
