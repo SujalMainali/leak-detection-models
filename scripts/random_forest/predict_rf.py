@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import joblib
 import pandas as pd
 
 # Allow running this script directly (adds repo root to sys.path)
@@ -12,6 +13,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from models.random_forest import config
 from models.random_forest.rf_model import TrainedRandomForestBaseline
+from data_preprocessing.normalization import inverse_transform_targets
 
 
 def main() -> None:
@@ -23,6 +25,15 @@ def main() -> None:
     model = TrainedRandomForestBaseline.load(model_path)
 
     preds = model.predict(df[model.feature_columns])
+
+    scalers_path = model_path.parent / "scalers.joblib"
+    if scalers_path.exists():
+        scalers_obj = joblib.load(scalers_path)
+        target_scaler = scalers_obj.get("target_scaler")
+        preds = inverse_transform_targets(preds, target_columns=model.target_columns, target_scaler=target_scaler)
+    else:
+        # If targets were normalized during training and scalers are missing, predictions will be in normalized units.
+        pass
     out = pd.concat([df[[config.SCENARIO_ID_COL]].reset_index(drop=True), preds], axis=1)
 
     output_csv.parent.mkdir(parents=True, exist_ok=True)

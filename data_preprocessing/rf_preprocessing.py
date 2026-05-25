@@ -158,14 +158,14 @@ if __name__ == "__main__":
 
     res = run_rf_preprocessing(
         raw_csv_path=config.RAW_CSV_PATH,
-        processed_csv_path=config.PROCESSED_CSV_PATH,
+        processed_csv_path=config.RF_RAW_FEATURES_CSV_PATH,
         scenario_id_col=config.SCENARIO_ID_COL,
         target_columns=config.TARGET_COLUMNS,
         sensor_node_prefixes=config.SENSOR_NODE_PREFIXES,
         valid_hours=config.VALID_HOURS,
     )
 
-    print("Saved processed dataset to:", config.PROCESSED_CSV_PATH)
+    print("Saved processed dataset to:", config.RF_RAW_FEATURES_CSV_PATH)
     print("Rows:", int(res.df.shape[0]))
     print("Columns:", int(res.df.shape[1]))
     print("Dropped rows missing targets:", res.dropped_rows_missing_targets)
