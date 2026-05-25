@@ -48,7 +48,7 @@ def main() -> None:
 
     # Save metrics into the per-tag outputs folder that matches the model.
     tag = model_path.parent.name
-    metrics_dir = config.OUTPUTS_DIR / "metrics" / "random_forest" / tag
+    metrics_dir = config.OUTPUTS_RUN_DIR / "metrics" / "random_forest" / tag
 
     def eval_split(name: str, df_split: pd.DataFrame) -> pd.DataFrame:
         x = df_split[model.feature_columns]

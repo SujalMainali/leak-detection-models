@@ -30,7 +30,7 @@ from models.random_forest.utils import evaluate_targets, save_metrics, save_metr
 
 
 def _output_dirs(tag: str) -> dict[str, Path]:
-    outputs_dir = config.OUTPUTS_DIR
+    outputs_dir = config.OUTPUTS_RUN_DIR
     return {
         "models": outputs_dir / "models" / "random_forest" / tag,
         "metrics": outputs_dir / "metrics" / "random_forest" / tag,
