@@ -3,7 +3,6 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import joblib
 import pandas as pd
 
 # Allow running this script directly (adds repo root to sys.path)
@@ -11,11 +10,25 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from data_preprocessing.split_data import apply_split_ids, load_split_ids
 from models.random_forest import config
-from models.random_forest.rf_model import TrainedRandomForestBaseline
 from models.random_forest.utils import evaluate_targets, save_metrics, save_metrics_json
-from data_preprocessing.normalization import inverse_transform_targets
+
+
+def _load_predictions(path: Path) -> tuple[pd.DataFrame, pd.DataFrame, list[str]]:
+    df = pd.read_csv(path, low_memory=False)
+    target_columns = list(config.TARGET_COLUMNS)
+    true_cols = [f"true_{t}" for t in target_columns]
+    pred_cols = [f"pred_{t}" for t in target_columns]
+
+    missing = [c for c in [config.SCENARIO_ID_COL, *true_cols, *pred_cols] if c not in df.columns]
+    if missing:
+        raise ValueError(f"Predictions file missing required columns: {missing}")
+
+    y_true = df.loc[:, true_cols].copy()
+    y_true.columns = target_columns
+    y_pred = df.loc[:, pred_cols].copy()
+    y_pred.columns = target_columns
+    return y_true, y_pred, target_columns
 
 
 def main() -> None:
@@ -23,52 +36,32 @@ def main() -> None:
     if not model_path.exists():
         raise FileNotFoundError(f"Model not found: {model_path}")
 
-    processed_path = Path(config.PREDICT_INPUT_CSV_PATH)
-    if not processed_path.exists():
-        raise FileNotFoundError(f"Processed dataset not found: {processed_path}")
-
-    df = pd.read_csv(processed_path, low_memory=False)
-
-    # Apply shared split IDs so results match the train/val/test split used in training.
-    try:
-        ids_split = load_split_ids(splits_dir=config.SPLIT_IDS_DIR, id_col=config.SCENARIO_ID_COL, prefix="rf_ids")
-    except FileNotFoundError as e:
-        raise FileNotFoundError(
-            f"Shared split IDs not found under {config.SPLIT_IDS_DIR}. Run train_rf_raw.py or train_rf_engineered.py first.\n{e}"
-        )
-
-    splits = apply_split_ids(df, id_col=config.SCENARIO_ID_COL, split_ids_res=ids_split)
-    model = TrainedRandomForestBaseline.load(model_path)
-
-    scalers_path = model_path.parent / "scalers.joblib"
-    scalers_obj = joblib.load(scalers_path) if scalers_path.exists() else {}
-    target_scaler = scalers_obj.get("target_scaler")
-
-    target_cols = list(config.TARGET_COLUMNS)
-
     # Save metrics into the per-tag outputs folder that matches the model.
     tag = model_path.parent.name
     metrics_dir = config.OUTPUTS_RUN_DIR / "metrics" / "random_forest" / tag
 
-    def eval_split(name: str, df_split: pd.DataFrame) -> pd.DataFrame:
-        x = df_split[model.feature_columns]
-        y_true = df_split[target_cols]
-        y_pred = model.predict(x)
+    predictions_dir = config.OUTPUTS_RUN_DIR / "predictions" / "random_forest" / tag
 
-        y_true_orig = inverse_transform_targets(y_true, target_columns=target_cols, target_scaler=target_scaler)
-        y_pred_orig = inverse_transform_targets(y_pred, target_columns=target_cols, target_scaler=target_scaler)
+    def eval_split(name: str) -> pd.DataFrame:
+        pred_path = predictions_dir / f"{name}_predictions.csv"
+        if not pred_path.exists():
+            raise FileNotFoundError(
+                f"Missing predictions file: {pred_path}. Run scripts/random_forest/predict_rf.py first."
+            )
 
-        metrics = evaluate_targets(y_true=y_true_orig, y_pred=y_pred_orig, target_columns=target_cols)
+        y_true, y_pred, target_cols = _load_predictions(pred_path)
+        metrics = evaluate_targets(y_true=y_true, y_pred=y_pred, target_columns=target_cols)
         save_metrics(metrics, metrics_dir / f"{name}_metrics.csv")
         save_metrics_json(metrics, metrics_dir / f"{name}_metrics.json")
         return metrics
 
     metrics_dir.mkdir(parents=True, exist_ok=True)
 
-    val_metrics = eval_split("val", splits.val)
-    test_metrics = eval_split("test", splits.test)
+    val_metrics = eval_split("val")
+    test_metrics = eval_split("test")
 
     print("Evaluation complete")
+    print("Loaded predictions from:", predictions_dir)
     print("Val metrics:\n", val_metrics)
     print("Test metrics:\n", test_metrics)
 

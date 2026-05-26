@@ -36,6 +36,7 @@ def main() -> None:
 
     data = np.load(config.CNN_READY_NPZ_PATH, allow_pickle=True)
     X = data["X"].astype(np.float32)
+    y = data["y"].astype(np.float32)
     scenario_ids = data["scenario_ids"].astype(int)
     target_columns = list(data["target_columns"].tolist())
 
@@ -46,7 +47,10 @@ def main() -> None:
     df_ids = pd.DataFrame({config.SCENARIO_ID_COL: scenario_ids.astype(int)})
     splits = apply_split_ids(df_ids, id_col=config.SCENARIO_ID_COL, split_ids_res=ids_split)
 
+    val_set = set(map(int, splits.val[config.SCENARIO_ID_COL].tolist()))
     test_set = set(map(int, splits.test[config.SCENARIO_ID_COL].tolist()))
+
+    val_mask = np.array([int(sid) in val_set for sid in scenario_ids], dtype=bool)
     test_mask = np.array([int(sid) in test_set for sid in scenario_ids], dtype=bool)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -67,22 +71,46 @@ def main() -> None:
     model.load_state_dict(state)
     model.eval()
 
-    with torch.no_grad():
-        xb = torch.from_numpy(X[test_mask]).to(device)
-        pred = model(xb).detach().cpu().numpy()
+    def _predict(mask: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        with torch.no_grad():
+            xb = torch.from_numpy(X[mask]).to(device)
+            pred = model(xb).detach().cpu().numpy()
+        y_true = y[mask]
 
-    if target_scaler is not None:
-        pred = target_scaler.inverse_transform(pred)
+        if target_scaler is not None:
+            pred_o = target_scaler.inverse_transform(pred)
+            y_true_o = target_scaler.inverse_transform(y_true)
+        else:
+            pred_o = pred
+            y_true_o = y_true
 
-    save_predictions(
-        scenario_ids=scenario_ids[test_mask],
-        y_true=None,
-        y_pred=pred,
-        out_path=config.PREDICTIONS_DIR / "test_predictions_only.csv",
-        target_columns=target_columns,
-    )
+        return y_true_o, pred_o
 
-    print("Wrote:", (config.PREDICTIONS_DIR / "test_predictions_only.csv").as_posix())
+    def _save_split(name: str, mask: np.ndarray) -> None:
+        y_true_o, pred_o = _predict(mask)
+
+        save_predictions(
+            scenario_ids=scenario_ids[mask],
+            y_true=y_true_o,
+            y_pred=pred_o,
+            out_path=config.PREDICTIONS_DIR / f"{name}_predictions.csv",
+            target_columns=target_columns,
+        )
+
+        save_predictions(
+            scenario_ids=scenario_ids[mask],
+            y_true=None,
+            y_pred=pred_o,
+            out_path=config.PREDICTIONS_DIR / f"{name}_predictions_only.csv",
+            target_columns=target_columns,
+        )
+
+    _save_split("val", val_mask)
+    _save_split("test", test_mask)
+
+    print("Wrote:")
+    print(" -", (config.PREDICTIONS_DIR / "val_predictions.csv").as_posix())
+    print(" -", (config.PREDICTIONS_DIR / "test_predictions.csv").as_posix())
 
 
 if __name__ == "__main__":

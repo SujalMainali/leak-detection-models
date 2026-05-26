@@ -66,6 +66,9 @@ METRICS_DIR = OUTPUTS_RUN_DIR / "metrics" / "cnn" / "baseline"
 PREDICTIONS_DIR = OUTPUTS_RUN_DIR / "predictions" / "cnn" / "baseline"
 PLOTS_DIR = OUTPUTS_RUN_DIR / "plots" / "cnn" / "baseline"
 
+# Training history (per-run)
+HISTORIES_DIR = OUTPUTS_RUN_DIR / "histories" / "cnn" / "baseline"
+
 # -----------------
 # Model architecture
 # -----------------

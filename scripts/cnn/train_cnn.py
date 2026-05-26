@@ -253,8 +253,11 @@ def main() -> None:
 
     # Save training history
     hist_path = config.METRICS_DIR / "training_history.csv"
+    hist_path2 = config.HISTORIES_DIR / "training_history.csv"
     df_hist = pd.DataFrame([asdict(r) for r in history])
     df_hist.to_csv(hist_path, index=False)
+    config.HISTORIES_DIR.mkdir(parents=True, exist_ok=True)
+    df_hist.to_csv(hist_path2, index=False)
 
     summary = {
         "best_epoch": int(best_epoch),
@@ -263,10 +266,12 @@ def main() -> None:
         "model_path": str(config.MODEL_PATH),
     }
     (config.METRICS_DIR / "training_summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    (config.HISTORIES_DIR / "training_summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
 
     print("\nTrained CNN (1D) baseline")
     print("Saved model:", config.MODEL_PATH)
     print("Saved history:", hist_path)
+    print("Saved history (copy):", hist_path2)
 
 
 if __name__ == "__main__":
