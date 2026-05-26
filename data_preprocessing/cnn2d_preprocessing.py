@@ -39,6 +39,8 @@ class Cnn2dDatasetMeta:
     target_columns: List[str]
     sensor_columns: List[str]
     num_scenarios: int
+    num_dropped_non_finite_scenarios: int
+    dropped_non_finite_scenario_ids: List[int]
     num_hours: int
     num_sensors: int
     normalize_pressures: bool
@@ -123,6 +125,24 @@ def preprocess_cnn2d_long_csv(
         x3[i, :, :] = g.loc[:, sensor_columns].to_numpy(dtype=float)
         y[i, :] = g.loc[:, list(target_columns)].iloc[0].to_numpy(dtype=float)
 
+    # Drop scenarios with any non-finite values (NaN/Inf) in inputs or targets.
+    x_finite = np.isfinite(x3.reshape(n, -1)).all(axis=1)
+    y_finite = np.isfinite(y).all(axis=1)
+    finite_mask = x_finite & y_finite
+
+    dropped_non_finite_ids: List[int] = []
+    if not bool(np.all(finite_mask)):
+        dropped_non_finite_ids = scenario_ids[~finite_mask].astype(int).tolist()
+        scenario_ids = scenario_ids[finite_mask]
+        x3 = x3[finite_mask]
+        y = y[finite_mask]
+        n = int(scenario_ids.shape[0])
+        if n == 0:
+            raise ValueError(
+                "All scenarios were dropped due to non-finite values in inputs/targets. "
+                f"Example dropped IDs: {dropped_non_finite_ids[:10]}"
+            )
+
     train_ids_set = None
     if train_scenario_ids is not None:
         train_ids_set = set(map(int, train_scenario_ids))
@@ -174,13 +194,15 @@ def preprocess_cnn2d_long_csv(
     artifacts = Cnn2dScalerArtifacts(pressure_scaler=pressure_scaler, target_scaler=target_scaler)
 
     meta = Cnn2dDatasetMeta(
-        version=1,
+        version=2,
         source_csv=str(csv_path),
         scenario_id_col=str(scenario_id_col),
         hour_col=str(hour_col),
         target_columns=list(map(str, target_columns)),
         sensor_columns=list(sensor_columns),
         num_scenarios=int(n),
+        num_dropped_non_finite_scenarios=int(len(dropped_non_finite_ids)),
+        dropped_non_finite_scenario_ids=list(map(int, dropped_non_finite_ids)),
         num_hours=int(num_hours),
         num_sensors=int(s),
         normalize_pressures=bool(normalize_pressures),

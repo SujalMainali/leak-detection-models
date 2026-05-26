@@ -165,6 +165,22 @@ def main() -> None:
     y = processed["y"].astype(np.float32)
     scenario_ids = processed["scenario_ids"].astype(int)
 
+    if not np.isfinite(X).all():
+        raise ValueError(
+            "Non-finite values detected in preprocessed X (NaN/Inf). "
+            "Rebuild the processed files by deleting data/processed/cnn2d_ready.npz (and scalers) "
+            "or setting REBUILD_PROCESSED_ON_RUN=True in models/cnn_2d/config.py."
+        )
+    bad_y = ~np.isfinite(y).all(axis=1)
+    if bool(np.any(bad_y)):
+        bad_ids = scenario_ids[bad_y][:10].astype(int).tolist()
+        raise ValueError(
+            "Non-finite values detected in preprocessed y (targets). "
+            f"Bad scenario_ids (up to 10): {bad_ids}. "
+            "Rebuild the processed files by deleting data/processed/cnn2d_ready.npz (and scalers) "
+            "or setting REBUILD_PROCESSED_ON_RUN=True in models/cnn_2d/config.py."
+        )
+
     train_set = set(map(int, train_ids))
     val_set = set(map(int, val_ids))
 
