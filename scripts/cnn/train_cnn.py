@@ -20,6 +20,30 @@ from models.cnn import config
 from models.cnn.cnn_model import CnnModelConfig, build_cnn_model
 
 
+def _to_jsonable(x):
+    if isinstance(x, Path):
+        return str(x)
+    if isinstance(x, range):
+        return list(x)
+    if isinstance(x, (list, tuple, set)):
+        return [_to_jsonable(v) for v in x]
+    if isinstance(x, dict):
+        return {str(k): _to_jsonable(v) for k, v in x.items()}
+    if isinstance(x, (np.integer, np.floating)):
+        return x.item()
+    if x is None or isinstance(x, (str, int, float, bool)):
+        return x
+    return str(x)
+
+
+def _config_module_snapshot(cfg_module) -> dict:
+    snap: dict[str, object] = {}
+    for k, v in vars(cfg_module).items():
+        if isinstance(k, str) and k.isupper():
+            snap[k] = _to_jsonable(v)
+    return snap
+
+
 def _require_torch():
     try:
         import torch
@@ -44,6 +68,7 @@ def _output_dirs() -> dict[str, Path]:
         "metrics": config.METRICS_DIR,
         "predictions": config.PREDICTIONS_DIR,
         "plots": config.PLOTS_DIR,
+        "histories": config.HISTORIES_DIR,
     }
 
 
@@ -160,6 +185,31 @@ def main() -> None:
         dense_units=list(map(int, config.DENSE_UNITS)),
         use_global_avg_pool=bool(config.USE_GLOBAL_AVG_POOL),
         num_outputs=len(config.TARGET_COLUMNS),
+    )
+
+    cfg_snapshot = {
+        "model": "cnn_1d",
+        "config": _config_module_snapshot(config),
+        "model_cfg": asdict(model_cfg),
+        "device": str(device),
+        "splits": {
+            "num_train_ids": int(len(train_ids)),
+            "num_val_ids": int(len(val_ids)),
+            "num_test_ids": int(len(test_ids)),
+        },
+        "data": {
+            "num_samples": int(X.shape[0]),
+            "num_hours": int(X.shape[1]),
+            "num_sensors": int(X.shape[2]),
+            "num_targets": int(y.shape[1]),
+        },
+    }
+    (config.METRICS_DIR / "config_snapshot.json").write_text(
+        json.dumps(cfg_snapshot, indent=2), encoding="utf-8"
+    )
+    config.HISTORIES_DIR.mkdir(parents=True, exist_ok=True)
+    (config.HISTORIES_DIR / "config_snapshot.json").write_text(
+        json.dumps(cfg_snapshot, indent=2), encoding="utf-8"
     )
 
     model = build_cnn_model(model_cfg).to(device)

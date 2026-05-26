@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -27,6 +28,28 @@ from data_preprocessing.split_data import (
 from models.random_forest import config
 from models.random_forest.rf_model import train_three_random_forests
 from models.random_forest.utils import evaluate_targets, save_metrics, save_metrics_json, save_predictions
+
+
+def _to_jsonable(x):
+    if isinstance(x, Path):
+        return str(x)
+    if isinstance(x, range):
+        return list(x)
+    if isinstance(x, (list, tuple, set)):
+        return [_to_jsonable(v) for v in x]
+    if isinstance(x, dict):
+        return {str(k): _to_jsonable(v) for k, v in x.items()}
+    if x is None or isinstance(x, (str, int, float, bool)):
+        return x
+    return str(x)
+
+
+def _config_module_snapshot(cfg_module) -> dict:
+    snap: dict[str, object] = {}
+    for k, v in vars(cfg_module).items():
+        if isinstance(k, str) and k.isupper():
+            snap[k] = _to_jsonable(v)
+    return snap
 
 
 def _output_dirs(tag: str) -> dict[str, Path]:
@@ -146,6 +169,23 @@ def main() -> None:
         max_features=config.MAX_FEATURES,
         n_jobs=config.N_JOBS,
         random_state=config.RANDOM_STATE,
+    )
+
+    cfg_snapshot = {
+        "model": "random_forest",
+        "tag": tag,
+        "config": _config_module_snapshot(config),
+        "rf_params": _to_jsonable(rf_params),
+        "feature_columns": feature_cols,
+        "target_columns": target_cols,
+        "splits": {
+            "num_train": int(len(splits.train)),
+            "num_val": int(len(splits.val)),
+            "num_test": int(len(splits.test)),
+        },
+    }
+    (out_dirs["models"] / "config_snapshot.json").write_text(
+        json.dumps(cfg_snapshot, indent=2), encoding="utf-8"
     )
 
     model = train_three_random_forests(
